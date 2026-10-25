@@ -5,12 +5,11 @@ The following is an extension of the method for creating doors and windows in th
 It works with the current stable version 1.1.4.
 Installation instructions:
 After backing up the original files, replace them with the attached files:
-In Mod/BIM/bimcommands:
 
+In Mod/BIM/bimcommands:
 •	BimWindow.py
 
 In Mod/BIM:
-
 •	ArchWindow.py
 •	ArchWindowPresets.py
 •	Additionally, include the three attached SVG files.
