@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-
+#cc
 # ***************************************************************************
 # *                                                                         *
 # *   Copyright (c) 2024 Yorik van Havre <yorik@uncreated.net>              *
@@ -40,9 +40,11 @@ class Arch_Window:
     "the Arch Window command definition"
 
     def __init__(self):
+
         self.doormode = False
 
     def GetResources(self):
+
         return {
             "Pixmap": "Arch_Window",
             "MenuText": QT_TRANSLATE_NOOP("Arch_Window", "Window"),
@@ -54,10 +56,12 @@ class Arch_Window:
         }
 
     def IsActive(self):
+
         v = hasattr(FreeCADGui.getMainWindow().getActiveWindow(), "getSceneGraph")
         return v
 
     def Activated(self):
+
         from draftutils import params
         import Draft
         import WorkingPlane
@@ -65,13 +69,16 @@ class Arch_Window:
 
         self.doc = FreeCAD.ActiveDocument
         self.sel = FreeCADGui.Selection.getSelection()
-        self.W1 = params.get_param_arch("WindowW1")
+        self.W1 = params.get_param_arch("WindowW1")  # thickness of the fixed frame
         
+        # Default für ScreedHeight setzen, falls noch nicht vorhanden
         if self.doormode and params.get_param_arch("DoorScreed") is None:
             params.set_param_arch("DoorScreed", 0.0)
+            FreeCAD.Console.PrintMessage("DEBUG Activated(): DoorScreed war None → Default 0.0 gesetzt\n")
 
         if self.doormode:
             sc = params.get_param_arch("DoorScreed")
+            FreeCAD.Console.PrintMessage(f"DEBUG Activated(): DoorScreed aus Params = {sc}\n")
             self.Width = params.get_param_arch("DoorWidth")
             self.Height = params.get_param_arch("DoorHeight")
             self.ScreedHeight = sc if sc is not None else 0.0
@@ -89,6 +96,7 @@ class Arch_Window:
         self.wparams = ["Width", "Height", "H1", "H2", "H3", "W1", "W2", "O1", "O2"]
         self.wp = None
 
+        # autobuild mode
         if FreeCADGui.Selection.getSelectionEx():
             FreeCADGui.draftToolBar.offUi()
             obj = self.sel[0]
@@ -104,7 +112,7 @@ class Arch_Window:
                                 host = obj.AttachmentSupport[0][0]
                             else:
                                 host = obj.AttachmentSupport
-                            obj.AttachmentSupport = None
+                            obj.AttachmentSupport = None  # remove
                     elif Draft.isClone(obj, "Window"):
                         if obj.Objects[0].Inlist:
                             host = obj.Objects[0].Inlist[0]
@@ -132,7 +140,10 @@ class Arch_Window:
                     self.doc.recompute()
                     return
 
+                # Try to detect an object to use as a window type - TODO we must make this safer
+
                 elif obj.Shape.Solids and (Draft.getType(obj) not in ["Wall", "Structure", "Roof"]):
+                    # we consider the selected object as a type
                     self.doc.openTransaction(translate("Arch", "Create Window"))
                     FreeCADGui.addModule("Arch")
                     FreeCADGui.doCommand("Arch.makeWindow(FreeCAD.ActiveDocument." + obj.Name + ")")
@@ -140,7 +151,9 @@ class Arch_Window:
                     self.doc.recompute()
                     return
 
-        FreeCAD.activeDraftCommand = self
+        # interactive mode
+
+        FreeCAD.activeDraftCommand = self  # register as a Draft command for auto grid on/off
         self.wp = WorkingPlane.get_working_plane()
         self.tracker = DraftTrackers.boxTracker()
         self.tracker.length(self.Width)
@@ -153,10 +166,12 @@ class Arch_Window:
         FreeCADGui.Snapper.getPoint(
             callback=self.getPoint, movecallback=self.update, extradlg=self.taskbox()
         )
+        # FreeCADGui.Snapper.setSelectMode(True)
 
     def has_width_and_height_constraint(self, sketch):
         width_found = False
         height_found = False
+
         for constr in sketch.Constraints:
             if constr.Name == "Width":
                 width_found = True
@@ -164,20 +179,25 @@ class Arch_Window:
                 height_found = True
             elif width_found and height_found:
                 break
+
         return width_found and height_found
 
     def getPoint(self, point=None, obj=None):
+        "this function is called by the snapper when it has a 3D point"
+
         import Draft
         from draftutils import gui_utils
         from draftutils.messages import _wrn
         from ArchWindowPresets import WindowPresets
 
         SketchArch = False
+
         FreeCAD.activeDraftCommand = None
         FreeCADGui.Snapper.off()
         self.tracker.off()
         if point is None:
             return
+        # if something was selected, override the underlying object
         if self.sel:
             obj = self.sel[0]
         point = point.add(FreeCAD.Vector(0, 0, self.SillHeight))
@@ -218,9 +238,11 @@ class Arch_Window:
 
         if self.Preset >= len(WindowPresets):
             preset = False
+            # library object
             col = self.doc.Objects
             path = self.librarypresets[self.Preset - len(WindowPresets)][1]
             FreeCADGui.doCommand("FreeCADGui.ActiveDocument.mergeProject('" + path + "')")
+            # find the latest added window
             nol = self.doc.Objects
             for o in nol[len(col) :]:
                 if Draft.getType(o) == "Window":
@@ -234,6 +256,11 @@ class Arch_Window:
                         break
                     FreeCADGui.doCommand("win = FreeCAD.ActiveDocument.getObject('" + o.Name + "')")
                     FreeCADGui.doCommand("win.Base.Placement = pl")
+                    # Historically, this normal was deduced by the orientation of the Base Sketch and hardcoded in the Normal property.
+                    # Now with the new AutoNormalReversed property/flag, set True as default, the auto Normal previously in opposite direction to is now consistent with that previously hardcoded.
+                    # With the normal set to 'auto', window object would not suffer weird shape if the Base Sketch is rotated by some reason.
+                    # Keep the property be 'auto' (0,0,0) here.
+                    # FreeCADGui.doCommand("win.Normal = pl.Rotation.multVec(FreeCAD.Vector(0, 0, -1))")
                     FreeCADGui.doCommand("win.Width = " + str(self.Width))
                     FreeCADGui.doCommand("win.Height = " + str(self.Height))
                     FreeCADGui.doCommand("win.Base.recompute()")
@@ -248,11 +275,13 @@ class Arch_Window:
             else:
                 _wrn(translate("Arch", "No window found. Cannot continue."))
                 self.Include = False
+
         else:
+            # preset
             preset = True
-            wp_str = ""
+            wp = ""
             for p in self.wparams:
-                wp_str += ", " + p.lower() + "=" + str(getattr(self, p))
+                wp += ", " + p.lower() + "=" + str(getattr(self, p))
             import ArchSketchObject
 
             if (
@@ -264,6 +293,12 @@ class Arch_Window:
                 and FreeCAD.ArchSketchLock
             ):
                 if self.Include:
+                    # Window base sketch's placement stay at origin is good if addon exists and self.Include
+                    #
+                    # Put Sketch in 'upright' position to ensure the opening symbol on plan (SymbolPlan enabled) is correct
+                    # - see https://github.com/FreeCAD/FreeCAD/issues/24903#issuecomment-3475455946
+                    # placement = FreeCAD.Placement(App.Vector(0,0,0),App.Rotation(App.Vector(1,0,0),90))
+                    # TODO 2025.11.1 : To improve the algorithm to be more robust to allow the Base Sketch in any orientation but without problem
                     FreeCADGui.doCommand(
                         "pl90 = FreeCAD.Placement(App.Vector(0,0,0),App.Rotation(App.Vector(1,0,0),90))"
                     )
@@ -271,17 +306,18 @@ class Arch_Window:
                         "win = Arch.makeWindowPreset('"
                         + WindowPresets[self.Preset]
                         + "' "
-                        + wp_str
+                        + wp
                         + ", placement=pl90"
                         + ")"
                     )
                 else:
+                    # Window base sketch's placement follow getPoint placement if addon exists but NOT self.Include
                     FreeCADGui.doCommand(
                         "win = Arch.makeWindowPreset('"
                         + WindowPresets[self.Preset]
                         + "' "
-                        + wp_str
-                        + ", placement = pl)"
+                        + wp
+                        + ", placement=pl"
                     )
                     FreeCADGui.doCommand("win.AttachToAxisOrSketch = 'None'")
                 FreeCADGui.doCommand("FreeCADGui.Selection.addSelection(win)")
@@ -294,7 +330,7 @@ class Arch_Window:
                     "win = Arch.makeWindowPreset('"
                     + WindowPresets[self.Preset]
                     + "' "
-                    + wp_str
+                    + wp
                     + ", placement = pl)"
                 )
                 SketchArch = False
@@ -309,18 +345,24 @@ class Arch_Window:
                     )
                 if SketchArch:
                     ArchSketchObject.attachToHost(w, target=host, pl=wPl)
-
-        if self.doormode and hasattr(self, "ScreedHeight") and self.ScreedHeight > 0:
+        #ch5:32
+        if self.doormode and hasattr(self, "ScreedHeight"):
+            FreeCADGui.doCommand(
+                "if not hasattr(win, 'ScreedHeight'): win.addProperty('App::PropertyLength', 'ScreedHeight', 'Arch', 'Screed height')"
+            )
             FreeCADGui.doCommand(
                 "win.ScreedHeight = " + str(self.ScreedHeight)
             )
-            
+          
         self.doc.commitTransaction()
         self.doc.recompute()
+        # gui_utils.end_all_events()  # Causes a crash on Linux.
         self.tracker.finalize()
         return
 
     def update(self, point, info):
+        "this function is called by the Snapper when the mouse is moved"
+
         delta = FreeCAD.Vector(self.Width / 2, self.W1 / 2, self.Height / 2)
         delta = delta.add(FreeCAD.Vector(0, 0, self.SillHeight))
 
@@ -330,8 +372,10 @@ class Arch_Window:
         if info:
             if "Face" in info["Component"]:
                 import DraftGeomUtils
+
                 o = self.doc.getObject(info["Object"])
                 self.baseFace = [o, int(info["Component"][4:]) - 1]
+                # print("switching to ",o.Label," face ",self.baseFace[1])
                 f = o.Shape.Faces[self.baseFace[1]]
                 p = DraftGeomUtils.placement_from_face(f, vec_z=self.wp.axis, rotated=True)
                 rot = p.Rotation
@@ -344,6 +388,8 @@ class Arch_Window:
         self.tracker.pos(point.add(delta))
 
     def taskbox(self):
+        "sets up a taskbox widget"
+
         from draftutils import params
         from PySide import QtCore, QtGui, QtSvgWidgets
         from ArchWindowPresets import WindowPresets
@@ -353,35 +399,71 @@ class Arch_Window:
         w.setWindowTitle(translate("Arch", "Window options"))
         grid = QtGui.QGridLayout(w)
 
+        # include box
         include = QtGui.QCheckBox(translate("Arch", "Auto include in host object"))
         include.setChecked(True)
         grid.addWidget(include, 0, 0, 1, 2)
-        if hasattr(include, "checkStateChanged"):
+        if hasattr(include, "checkStateChanged"):  # Qt version >= 6.7.0
             include.checkStateChanged.connect(self.setInclude)
-        else:
+        else:  # Qt version < 6.7.0
             include.stateChanged.connect(self.setInclude)
 
+        # sill height
         labels = QtGui.QLabel(translate("Arch", "Sill height"))
         values = ui.createWidget("Gui::InputField")
         grid.addWidget(labels, 1, 0, 1, 1)
         grid.addWidget(values, 1, 1, 1, 1)
         values.valueChanged.connect(self.setSillHeight)
 
+        #ch5:52 Neue Einfügung 14:30
+        # screed height (door mode only)
+
         if self.doormode:
             labelsc = QtGui.QLabel(translate("Arch", "Screed height"))
             self.valueScreed = ui.createWidget("Gui::InputField")
+            
+            # === DEBUG: Wert aus Params laden ===
             sc = params.get_param_arch("DoorScreed")
+            FreeCAD.Console.PrintMessage(f"DEBUG: ScreedHeight aus Params gelesen = {sc}\n")
+            
             if sc is None:
                 sc = 0.0
+                FreeCAD.Console.PrintMessage("DEBUG: ScreedHeight war None → Default 0.0 verwendet\n")
+            
             self.ScreedHeight = sc
+
+            # Wert ins Formular schreiben
             q = FreeCAD.Units.Quantity(sc, FreeCAD.Units.Length)
             self.valueScreed.setText(q.UserString)
+            
+            FreeCAD.Console.PrintMessage(f"DEBUG: ScreedHeight ins Formular gesetzt = {q.UserString}\n")
+            
             grid.addWidget(labelsc, 2, 0, 1, 1)
             grid.addWidget(self.valueScreed, 2, 1, 1, 1)
             self.valueScreed.valueChanged.connect(self.setScreedHeight)
 
+        # if self.doormode:
+        #     labelsc = QtGui.QLabel(translate("Arch", "Screed height"))
+        #     self.valueScreed = ui.createWidget("Gui::InputField")
+        #     self.valueScreed.setText(
+        #         FreeCAD.Units.Quantity(0, FreeCAD.Units.Length).UserString
+        #     )
+        #     grid.addWidget(labelsc, 2, 0, 1, 1)
+        #     grid.addWidget(self.valueScreed, 2, 1, 1, 1)
+        #     self.valueScreed.valueChanged.connect(self.setScreedHeight)
+
+        
+        
+        # check for Parts library and Arch presets
+
+        # because of the use of FreeCADGui.doCommand() backslashes in the
+        # paths in librarypresets need to be double escaped "\\\\", so let's
+        # use forward slashes instead...
         self.librarypresets = []
-        librarypath = FreeCAD.ParamGet("User parameter:Plugins/parts_library").GetString("destination", "")
+        librarypath = FreeCAD.ParamGet("User parameter:Plugins/parts_library").GetString(
+            "destination", ""
+        )
+        # librarypath should have only forward slashes already, but let's use replace() anyway just to be sure:
         librarypath = librarypath.replace("\\", "/") + "/Architectural Parts"
         presetdir = FreeCAD.getUserAppDataDir().replace("\\", "/") + "/Arch"
         for path in [librarypath, presetdir]:
@@ -393,7 +475,9 @@ class Arch_Window:
                             subdir = wdir + "/" + subtype
                             if os.path.isdir(subdir):
                                 for subfile in os.listdir(subdir):
-                                    if os.path.isfile(subdir + "/" + subfile) and subfile.lower().endswith(".fcstd"):
+                                    if os.path.isfile(
+                                        subdir + "/" + subfile
+                                    ) and subfile.lower().endswith(".fcstd"):
                                         self.librarypresets.append(
                                             [
                                                 wtype + " - " + subtype + " - " + subfile[:-6],
@@ -401,29 +485,37 @@ class Arch_Window:
                                             ]
                                         )
 
+        # presets box
         labelp = QtGui.QLabel(translate("Arch", "Preset"))
         valuep = QtGui.QComboBox()
         valuep.setMinimumContentsLength(6)
         valuep.setSizeAdjustPolicy(QtGui.QComboBox.AdjustToContents)
         valuep.addItems(WindowPresets)
         valuep.setCurrentIndex(self.Preset)
+        #ch5:32 Anpassung
         grid.addWidget(labelp, 3, 0, 1, 1)
         grid.addWidget(valuep, 3, 1, 1, 1)
         valuep.currentIndexChanged.connect(self.setPreset)
         for it in self.librarypresets:
             valuep.addItem(it[0])
 
+        # image display
         self.pic = QtGui.QLabel()
         grid.addWidget(self.pic, 4, 0, 1, 2)
         self.pic.setFixedHeight(128)
         self.pic.hide()
 
+        # SVG display
         self.im = QtSvgWidgets.QSvgWidget(":/ui/ParametersWindowFixed.svg")
         self.im.setMaximumWidth(200)
         self.im.setMinimumHeight(120)
         grid.addWidget(self.im, 5, 0, 1, 2)
+        # self.im.hide()
 
+        # parameters
         i = 6
+        #ch5:32 Ende Anpassung
+
         for param in self.wparams:
             lab = QtGui.QLabel(translate("Arch", param))
             setattr(self, "val" + param, ui.createWidget("Gui::InputField"))
@@ -447,29 +539,40 @@ class Arch_Window:
                 getattr(self, "val" + param), QtCore.SIGNAL("valueChanged(double)"), valueChanged
             )
 
+        # restore saved states
         if self.doormode:
-            i_val = params.get_param_arch("DoorPreset")
+            i = params.get_param_arch("DoorPreset")
             d = params.get_param_arch("DoorSill")
+
         else:
-            i_val = params.get_param_arch("WindowPreset")
+            i = params.get_param_arch("WindowPreset")
             d = params.get_param_arch("WindowSill")
-        if i_val < valuep.count():
-            valuep.setCurrentIndex(i_val)
+        if i < valuep.count():
+            valuep.setCurrentIndex(i)
         values.setText(FreeCAD.Units.Quantity(d, FreeCAD.Units.Length).UserString)
 
         return w
     
+    #ch5:32 Einfuegung setScreedHeight
     def setScreedHeight(self, d):
+        """Speichert den ScreedHeight-Wert in den Parametern"""
         from draftutils import params
         self.ScreedHeight = d
         if self.doormode:
             params.set_param_arch("DoorScreed", d)
 
+            # === DEBUG: Speichern ===
+            q = FreeCAD.Units.Quantity(d, FreeCAD.Units.Length)
+            FreeCAD.Console.PrintMessage(f"DEBUG: ScreedHeight gespeichert = {q.UserString}\n")
+
     def getValueChanged(self, p):
+
         return lambda d: self.setParams(p, d)
 
     def setSillHeight(self, d):
+
         from draftutils import params
+
         self.SillHeight = d
         if self.doormode:
             params.set_param_arch("DoorSill", d)
@@ -477,10 +580,13 @@ class Arch_Window:
             params.set_param_arch("WindowSill", d)
 
     def setInclude(self, i):
+
         self.Include = bool(getattr(i, "value", i))
 
     def setParams(self, param, d):
+
         from draftutils import params
+
         setattr(self, param, d)
         self.tracker.length(self.Width)
         self.tracker.height(self.Height)
@@ -489,6 +595,7 @@ class Arch_Window:
         params.set_param_arch(prefix + param, d)
 
     def setPreset(self, i):
+
         from PySide import QtGui
         from draftutils import params
         from ArchWindowPresets import WindowPresets
@@ -508,27 +615,28 @@ class Arch_Window:
             self.im.show()
             if i == 0:
                 self.im.load(":/ui/ParametersWindowFixed.svg")
-            elif i in [1, 6]:  # Open 1-pane, Awning
+            elif i in [1, 9]:
                 self.im.load(":/ui/ParametersWindowSimple.svg")
-            elif i in [2, 4, 5]:  # Open 2-pane, Sliding 2-pane, Sliding 4-pane
+            elif i in [2, 4, 8]:
                 self.im.load(":/ui/ParametersWindowDouble.svg")
-            elif i == 3:  # Sash 2-pane
+            elif i == 3:
                 self.im.load(":/ui/ParametersWindowStash.svg")
-            elif i == 7:  # Arched window
-                self.im.load("D:/Program Files/FreeCAD 1.1/Mod/BIM/ParametersWindowArched.svg")
-            elif i == 8:  # Oval fixed window
-                self.im.load("D:/Program Files/FreeCAD 1.1/Mod/BIM/ParametersOvalWindowFixed.svg")
-            elif i == 9:  # Opening only
-                self.im.load(":/ui/ParametersOpening.svg")
-            elif i == 10:  # Simple door
+            elif i in [5]:
                 self.im.load(":/ui/ParametersDoorSimple.svg")
-            elif i == 11:  # Glass door
+            elif i == 6:    
                 self.im.load("D:/Program Files/FreeCAD 1.1/Mod/BIM/ParametersGlassDoor.svg")
-            elif i == 12:  # Glassfilled door
+            elif i == 7:
                 self.im.load(":/ui/ParametersDoorGlass.svg")
-            elif i in [13, 14]:  # Arched Glass door, Arched Glassfilled door
-                self.im.load("D:/Program Files/FreeCAD 1.1/Mod/BIM/ParametersGlassDoorArched.svg")
+            elif i == 10:
+                self.im.load("D:/Program Files/FreeCAD 1.1/Mod/BIM/ParametersWindowArched.svg") #erg.ChK.
+            elif i in [11, 12]:
+                self.im.load("D:/Program Files/FreeCAD 1.1/Mod/BIM/ParametersGlassDoorArched.svg") #erg.ChK.
+            elif i == 13:
+                self.im.load("D:/Program Files/FreeCAD 1.1/Mod/BIM/ParametersOvalWindowFixed.svg") #erg.ChK.
+            elif i == 14:
+                self.im.load(":/ui/ParametersOpening.svg")
             else:
+                # From Library
                 self.im.hide()
                 path = self.librarypresets[i - len(WindowPresets)][1]
                 if path.lower().endswith(".fcstd"):
@@ -540,6 +648,7 @@ class Arch_Window:
                     else:
                         zfile = zipfile.ZipFile(path)
                         files = zfile.namelist()
+                        # check for meta-file if it's really a FreeCAD document
                         if files[0] == "Document.xml":
                             image = "thumbnails/Thumbnail.png"
                             if image in files:
@@ -551,6 +660,8 @@ class Arch_Window:
                                 im = QtGui.QPixmap(thumbfile)
                                 self.pic.setPixmap(im)
                                 self.pic.show()
+            # for param in self.wparams:
+            #    getattr(self,"val"+param).setEnabled(True)
         else:
             FreeCADGui.Snapper.setSelectMode(True)
             self.tracker.off()
